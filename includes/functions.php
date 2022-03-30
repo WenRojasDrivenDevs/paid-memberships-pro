@@ -3999,3 +3999,4 @@ function pmpro_maybe_send_wp_new_user_notification( $user_id, $level_id = null )
 		wp_new_user_notification( $user_id, null, 'both' );
 	}
 }
+

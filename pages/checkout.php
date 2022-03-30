@@ -223,7 +223,7 @@ if ( empty( $default_gateway ) ) {
 
 	<?php
 		$pmpro_include_billing_address_fields = apply_filters('pmpro_include_billing_address_fields', true);
-		if($pmpro_include_billing_address_fields && $gateway !== "stripecheckout") { ?>
+		if($pmpro_include_billing_address_fields) { ?>
 	<div id="pmpro_billing_address_fields" class="<?php echo pmpro_get_element_class( 'pmpro_checkout', 'pmpro_billing_address_fields' ); ?>" <?php if(!$pmpro_requirebilling || apply_filters("pmpro_hide_billing_address_fields", false) ){ ?>style="display: none;"<?php } ?>>
 		<hr />
 		<h3>

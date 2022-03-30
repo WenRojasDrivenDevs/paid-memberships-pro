@@ -43,7 +43,10 @@ class PMProGateway_stripecheckout extends PMProGateway
         $gateway = pmpro_getGateway();
         if ($gateway == "stripecheckout") {
             add_filter('pmpro_checkout_default_submit_button', array('PMProGateway_stripecheckout', 'pmpro_checkout_default_submit_button'));
+            add_filter('pmpro_required_billing_fields', '__return_false');
             add_filter('pmpro_checkout_before_change_membership_level', array('PMProGateway_stripecheckout', 'pmpro_checkout_before_change_membership_level'), 10, 2);
+            add_filter('pmpro_include_payment_information_fields', '__return_false');
+            add_filter('pmpro_include_billing_address_fields', '__return_false');
         }
     }
 
@@ -169,6 +172,7 @@ class PMProGateway_stripecheckout extends PMProGateway
      */
     static function pmpro_checkout_before_change_membership_level($user_id, $morder)
     {
+        global $discount_code_id, $wpdb;
 
         //if no order, no need to pay
         if (empty($morder))
@@ -176,23 +180,69 @@ class PMProGateway_stripecheckout extends PMProGateway
 
         $morder->user_id = $user_id;
         $morder->saveOrder();
-        //TODO:
-        // do_action("pmpro_before_send_to_paypal_standard", $user_id, $morder);
 
-        $morder->Gateway->sendToPayPal($morder);
+        //save discount code use
+        if (!empty($discount_code_id))
+            $wpdb->query("INSERT INTO $wpdb->pmpro_discount_codes_uses (code_id, user_id, order_id, timestamp) VALUES('" . $discount_code_id . "', '" . $user_id . "', '" . $morder->id . "', now())");
+        //TODO: what is this?
+        // do_action("pmpro_before_send_to_stripecheckout", $user_id, $morder);
+
+        $morder->Gateway->sendToStripe($morder);
     }
 
+
+    /**
+     * Process checkout.
+     *
+     * @param \MemberOrder $order
+     *
+     * @return bool
+     */
+    function process(&$order)
+    {
+        if (empty($order->code))
+            $order->code = $order->getRandomCode();
+
+        //clean up a couple values
+        $order->payment_type = "Stripe Checkout";
+        $order->CardType = "";
+        $order->cardtype = "";
+
+        //just save, the user will go to Stripe to pay
+        $order->status = "review";
+        $order->saveOrder();
+
+        return true;
+    }
 
     /**
      * Send the data/order to Stripe.com's server
      *
      * @param \MemberOrder $order
      */
-    function sendToPayPal(&$order)
+    function sendToStripe($order)
     {
-        $stripeCheckout_url = "http://localhost:4242/";
 
-        wp_redirect($stripeCheckout_url);
+        //load Stripe library if it hasn't been loaded already (usually by another plugin using Stripe)
+        if (!class_exists("Stripe\Stripe")) {
+            require_once(PMPRO_DIR . "/stripe-php/init.php");
+        }
+
+        $dir = home_url();
+        $stripe = new \Stripe\StripeClient('sk_test_51Kg6n8JxLtOkgj83AF1411YlBGGRqOdX7CoVQsEXL3aG9nYKWDQKEsiBwljGtVxaM7pek0JzetgSh9MYaYIGJN3V00gXDYG8Q0');
+        $res = $stripe->checkout->sessions->create([
+            'success_url' => $dir . '/membership-confirmation?id={CHECKOUT_SESSION_ID}',
+            'cancel_url' => $dir . '/membership-cancel',
+            'line_items' => [
+                [
+                    'price' => 'price_1KgCSkJxLtOkgj83I2k2yOPx',
+                    'quantity' => 2,
+                ],
+            ],
+            'mode' => 'subscription',
+        ]);
+
+        wp_redirect($res->url);
         exit;
     }
 }

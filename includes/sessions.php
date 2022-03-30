@@ -15,6 +15,7 @@ function pmpro_start_session() {
 	if ( headers_sent() ) {
 		return;
     }
+    session_save_path('C:\Users\PC Wenceslao\Desktop\Pruebas');
 
     //if the session hasn't been started yet, start it (ignore if running from command line)
     if (!defined('PMPRO_USE_SESSIONS') || PMPRO_USE_SESSIONS == true) {
@@ -22,7 +23,7 @@ function pmpro_start_session() {
             //command line
         } else {
             if (version_compare(phpversion(), '5.4.0', '>=')) {
-                if (session_status() == PHP_SESSION_NONE) {
+                if (session_status() == 1) {
                     session_start();
                 }
             } else {

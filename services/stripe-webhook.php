@@ -1,4 +1,6 @@
 <?php
+    
+
 	if ( version_compare( PHP_VERSION, '5.3.29', '<' )) {
 		return;
 	}
@@ -39,9 +41,10 @@
 		$body = @file_get_contents('php://input');
 		$post_event = json_decode($body);
 
-		//get the id
+        //get the id
 		if ( ! empty( $post_event ) ) {
-			$event_id = sanitize_text_field($post_event->id);
+			// $event_id = sanitize_text_field($post_event->id);
+			$event_id = sanitize_text_field($post_event['id']);
 			$livemode = ! empty( $post_event->livemode );
 		}
 	}
@@ -59,7 +62,7 @@
 		} else {
 			$secret_key = pmpro_getOption( 'sandbox_stripe_connect_secretkey' );
 		}
-		Stripe\Stripe::setApiKey( $secret_key );
+		Stripe\Stripe::setApiKey( "rk_test_51Kg6n8JxLtOkgj83R6CX4BvrdNIweBcGgMjuOb1ugjLazIBIVBSLeQKNOWcrM2DXGLu2zkKdP93ool3hoYocEPr5000G7D6M9R" );
 	} catch ( Exception $e ) {
 		$logstr .= "Unable to set API key for Stripe gateway: " . $e->getMessage();
 		pmpro_stripeWebhookExit();
@@ -71,7 +74,7 @@
 		try
 		{
 			global $pmpro_stripe_event;
-			$pmpro_stripe_event = Stripe_Event::retrieve($event_id);
+			$pmpro_stripe_event = Stripe_Event::retrieve('evt_1KjVhUJxLtOkgj83No7sdF3i');
 		}
 		catch(Exception $e)
 		{
@@ -98,101 +101,114 @@
 			if($pmpro_stripe_event->data->object->amount_due > 0)
 			{
 				//do we have this order yet? (check status too)
-				$order = getOrderFromInvoiceEvent($pmpro_stripe_event);
+				// $order = getOrderFromInvoiceEvent($pmpro_stripe_event);
+                // $order = getOrderFromInvoiceEvent($pmpro_stripe_event);
+                global $wpdb;
+			    $order = $wpdb->get_results( $wpdb->prepare ("SELECT * FROM $wpdb->pmpro_membership_orders WHERE checkout_id = '1'"));
 
-				//no? create it
-				if(empty($order->id))
+                //no? create it
+				// if(empty($order->id))
+                if($order)
 				{				
-					//last order for this subscription //getOldOrderFromInvoiceEvent($pmpro_stripe_event);
-					$old_order = new MemberOrder();
-					$old_order->getLastMemberOrderBySubscriptionTransactionID($pmpro_stripe_event->data->object->subscription);
+
+                    
+					// //last order for this subscription //getOldOrderFromInvoiceEvent($pmpro_stripe_event);
+					// $old_order = new MemberOrder();
+					// $old_order->getLastMemberOrderBySubscriptionTransactionID($pmpro_stripe_event->data->object->subscription);
 					
-					//still can't find the order
-					if(empty($old_order) || empty($old_order->id))
-					{
-						$logstr .= "Couldn't find the original subscription.";
-						pmpro_stripeWebhookExit();
-					}
+					// //still can't find the order
+					// if(empty($old_order) || empty($old_order->id))
+					// {
+					// 	$logstr .= "Couldn't find the original subscription.";
+					// 	pmpro_stripeWebhookExit();
+					// }
 
-					$user_id = $old_order->user_id;
-					$user = get_userdata($user_id);
-					$user->membership_level = pmpro_getMembershipLevelForUser($user_id);
+					// $user_id = $old_order->user_id;
+					// $user = get_userdata($user_id);
+					// $user->membership_level = pmpro_getMembershipLevelForUser($user_id);
 
-					if(empty($user))
-					{
-						$logstr .= "Couldn't find the old order's user. Order ID = " . $old_order->id . ".";
-						pmpro_stripeWebhookExit();
-					}
+					// if(empty($user))
+					// {
+					// 	$logstr .= "Couldn't find the old order's user. Order ID = " . $old_order->id . ".";
+					// 	pmpro_stripeWebhookExit();
+					// }
 
-					$invoice = $pmpro_stripe_event->data->object;
+					// $invoice = $pmpro_stripe_event->data->object;
 
+					// //alright. create a new order/invoice
+					// $morder = new MemberOrder();
+					// $morder->user_id = $old_order->user_id;
+					// $morder->membership_id = $old_order->membership_id;
+					// $morder->timestamp = $invoice->created;
 					//alright. create a new order/invoice
 					$morder = new MemberOrder();
-					$morder->user_id = $old_order->user_id;
-					$morder->membership_id = $old_order->membership_id;
-					$morder->timestamp = $invoice->created;
+					$morder->user_id = $order['0']->user_id;
+					$morder->membership_id = $order['0']->user_id->membership_id;
+					// $morder->timestamp = $invoice->created;
 					
-					global $pmpro_currency;
-					global $pmpro_currencies;
+					// global $pmpro_currency;
+					// global $pmpro_currencies;
 					
-					$currency_unit_multiplier = 100; // 100 cents / USD
+					// $currency_unit_multiplier = 100; // 100 cents / USD
 
-					//account for zero-decimal currencies like the Japanese Yen
-					if(is_array($pmpro_currencies[$pmpro_currency]) && isset($pmpro_currencies[$pmpro_currency]['decimals']) && $pmpro_currencies[$pmpro_currency]['decimals'] == 0)
-						$currency_unit_multiplier = 1;
+					// //account for zero-decimal currencies like the Japanese Yen
+					// if(is_array($pmpro_currencies[$pmpro_currency]) && isset($pmpro_currencies[$pmpro_currency]['decimals']) && $pmpro_currencies[$pmpro_currency]['decimals'] == 0)
+					// 	$currency_unit_multiplier = 1;
 					
-					if(isset($invoice->amount))
-					{
-						$morder->subtotal = $invoice->amount / $currency_unit_multiplier;
-						$morder->tax = 0;
-					}
-					elseif(isset($invoice->subtotal))
-					{
-						$morder->subtotal = (! empty( $invoice->subtotal ) ? $invoice->subtotal / $currency_unit_multiplier : 0);
-						$morder->tax = (! empty($invoice->tax) ? $invoice->tax / $currency_unit_multiplier : 0);
-						$morder->total = (! empty($invoice->total) ? $invoice->total / $currency_unit_multiplier : 0);
-					}
+					// if(isset($invoice->amount))
+					// {
+					// 	$morder->subtotal = $invoice->amount / $currency_unit_multiplier;
+					// 	$morder->tax = 0;
+					// }
+					// elseif(isset($invoice->subtotal))
+					// {
+					// 	$morder->subtotal = (! empty( $invoice->subtotal ) ? $invoice->subtotal / $currency_unit_multiplier : 0);
+					// 	$morder->tax = (! empty($invoice->tax) ? $invoice->tax / $currency_unit_multiplier : 0);
+					// 	$morder->total = (! empty($invoice->total) ? $invoice->total / $currency_unit_multiplier : 0);
+					// }
 
-					$morder->payment_transaction_id = $invoice->id;
-					$morder->subscription_transaction_id = $invoice->subscription;
+					// $morder->payment_transaction_id = $invoice->id;
+					// $morder->subscription_transaction_id = $invoice->subscription;
 
-					$morder->gateway = $old_order->gateway;
-					$morder->gateway_environment = $old_order->gateway_environment;
+					// $morder->gateway = $old_order->gateway;
+					// $morder->gateway_environment = $old_order->gateway_environment;
 
-					$charge = Stripe_Charge::retrieve( $pmpro_stripe_event->data->object->charge );
-					if ( ! empty ( $charge->billing_details->address->line1 ) ) {
-						// Get order billing details from Stripe.
-						$morder->billing = $charge->billing_details->address;
-						$morder->billing->name = $charge->billing_details->name; // Add name.
-						$morder->billing->phone = $charge->billing_details->phone; // Add phone.
-						$morder->billing->zip = $morder->billing->postal_code; // Fix zip.
-						$morder->billing->street = $morder->billing->line1; // Fix street. 
+					// $charge = Stripe_Charge::retrieve( $pmpro_stripe_event->data->object->charge );
+					// if ( ! empty ( $charge->billing_details->address->line1 ) ) {
+					// 	// Get order billing details from Stripe.
+					// 	$morder->billing = $charge->billing_details->address;
+					// 	$morder->billing->name = $charge->billing_details->name; // Add name.
+					// 	$morder->billing->phone = $charge->billing_details->phone; // Add phone.
+					// 	$morder->billing->zip = $morder->billing->postal_code; // Fix zip.
+					// 	$morder->billing->street = $morder->billing->line1; // Fix street. 
 
-						$nameparts = pnp_split_full_name( $morder->billing->name );
-						$morder->FirstName = empty( $nameparts['fname'] ) ? '' : $nameparts['fname'];
-						$morder->LastName = empty( $nameparts['lname'] ) ? '' : $nameparts['lname'];
-						$morder->Email = $wpdb->get_var("SELECT user_email FROM $wpdb->users WHERE ID = '" . $old_order->user_id . "' LIMIT 1");
-						$morder->Address1 = $morder->billing->street;
-						$morder->City = $morder->billing->city;
-						$morder->State = $morder->billing->state;
-						$morder->Zip = $morder->billing->zip;
-						$morder->PhoneNumber = $morder->billing->phone;
-					} else {
-						// Pull from previous order.
-						$morder->find_billing_address();
-					}
+					// 	$nameparts = pnp_split_full_name( $morder->billing->name );
+					// 	$morder->FirstName = empty( $nameparts['fname'] ) ? '' : $nameparts['fname'];
+					// 	$morder->LastName = empty( $nameparts['lname'] ) ? '' : $nameparts['lname'];
+					// 	$morder->Email = $wpdb->get_var("SELECT user_email FROM $wpdb->users WHERE ID = '" . $old_order->user_id . "' LIMIT 1");
+					// 	$morder->Address1 = $morder->billing->street;
+					// 	$morder->City = $morder->billing->city;
+					// 	$morder->State = $morder->billing->state;
+					// 	$morder->Zip = $morder->billing->zip;
+					// 	$morder->PhoneNumber = $morder->billing->phone;
+					// } else {
+					// 	// Pull from previous order.
+					// 	$morder->find_billing_address();
+					// }
 
-					//get CC info that is on file
-					$morder->cardtype = get_user_meta($user_id, "pmpro_CardType", true);
-					$morder->accountnumber = hideCardNumber(get_user_meta($user_id, "pmpro_AccountNumber", true), false);
-					$morder->expirationmonth = get_user_meta($user_id, "pmpro_ExpirationMonth", true);
-					$morder->expirationyear = get_user_meta($user_id, "pmpro_ExpirationYear", true);
-					$morder->ExpirationDate = $morder->expirationmonth . $morder->expirationyear;
-					$morder->ExpirationDate_YdashM = $morder->expirationyear . "-" . $morder->expirationmonth;
+					// //get CC info that is on file
+					// $morder->cardtype = get_user_meta($user_id, "pmpro_CardType", true);
+					// $morder->accountnumber = hideCardNumber(get_user_meta($user_id, "pmpro_AccountNumber", true), false);
+					// $morder->expirationmonth = get_user_meta($user_id, "pmpro_ExpirationMonth", true);
+					// $morder->expirationyear = get_user_meta($user_id, "pmpro_ExpirationYear", true);
+					// $morder->ExpirationDate = $morder->expirationmonth . $morder->expirationyear;
+					// $morder->ExpirationDate_YdashM = $morder->expirationyear . "-" . $morder->expirationmonth;
 
 					//save
 					$morder->status = "success";
 					$morder->saveOrder();
+                    var_dump($morder);
+                    die();
 					$morder->getMemberOrderByID($morder->id);
 
 					//email the user their invoice
@@ -200,6 +216,8 @@
 					$pmproemail->sendInvoiceEmail($user, $morder);
 
 					$logstr .= "Created new order with ID #" . $morder->id . ". Event ID #" . $pmpro_stripe_event->id . ".";
+                    //TODO:
+					pmpro_stripeWebhookExit();
 
 					/*
 						Checking if there is an update "after next payment" for this user.
@@ -567,7 +585,7 @@
 			echo esc_html( $logstr );
 
 			//log in file or email?
-			if(defined('PMPRO_STRIPE_WEBHOOK_DEBUG') && PMPRO_STRIPE_WEBHOOK_DEBUG === "log")
+			if(true)
 			{
 				//file
 				$loghandle = fopen(dirname(__FILE__) . "/../logs/stripe-webhook.txt", "a+");

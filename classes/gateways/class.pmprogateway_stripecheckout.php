@@ -5,6 +5,7 @@ require_once(dirname(__FILE__) . "/class.pmprogateway.php");
 add_action('init', array('PMProGateway_stripecheckout', 'init'));
 class PMProGateway_stripecheckout extends PMProGateway
 {
+
     /**
      * PMProGateway_stripecheckout constructor.
      *
@@ -14,7 +15,10 @@ class PMProGateway_stripecheckout extends PMProGateway
      */
     function __construct($gateway = NULL)
     {
+
+        
         $this->gateway = $gateway;
+        $this->gateway_environment = pmpro_getOption("gateway_environment");
         return $this->gateway;
     }
 
@@ -26,6 +30,11 @@ class PMProGateway_stripecheckout extends PMProGateway
      */
     static function init()
     {
+
+        //load Stripe library if it hasn't been loaded already (usually by another plugin using Stripe)
+        if (!class_exists("Stripe\Stripe")) {
+            require_once(PMPRO_DIR . "/includes/lib/Stripe/init.php");
+        }
         //make sure Stripe Checkout is a gateway option
         add_filter('pmpro_gateways', array('PMProGateway_stripecheckout', 'pmpro_gateways'));
         //add fields to payment settings
@@ -43,8 +52,8 @@ class PMProGateway_stripecheckout extends PMProGateway
         $gateway = pmpro_getGateway();
         if ($gateway == "stripecheckout") {
             add_filter('pmpro_checkout_default_submit_button', array('PMProGateway_stripecheckout', 'pmpro_checkout_default_submit_button'));
-            add_filter('pmpro_required_billing_fields', '__return_false');
             add_filter('pmpro_checkout_before_change_membership_level', array('PMProGateway_stripecheckout', 'pmpro_checkout_before_change_membership_level'), 10, 2);
+            add_filter('pmpro_required_billing_fields', '__return_false');
             add_filter('pmpro_include_payment_information_fields', '__return_false');
             add_filter('pmpro_include_billing_address_fields', '__return_false');
         }
@@ -149,11 +158,7 @@ class PMProGateway_stripecheckout extends PMProGateway
 
         <span id="pmpro_submit_span" <?php if (($gateway == "stripecheckout") && $pmpro_requirebilling) { ?>style="display: none;" <?php } ?>>
             <input type="hidden" name="submit-checkout" value="1" />
-            <input type="submit" id="pmpro_btn-submit" class="<?php echo pmpro_get_element_class('pmpro_btn pmpro_btn-submit-checkout', 'pmpro_btn-submit-checkout'); ?>" value="<?php if ($pmpro_requirebilling) {
-                                                                                                                                                                                        _e('Submit and Check Out', 'paid-memberships-pro');
-                                                                                                                                                                                    } else {
-                                                                                                                                                                                        _e('Submit and Confirm', 'paid-memberships-pro');
-                                                                                                                                                                                    } ?> &raquo;" />
+            <input type="submit" id="pmpro_btn-submit" class="<?php echo pmpro_get_element_class('pmpro_btn pmpro_btn-submit-checkout', 'pmpro_btn-submit-checkout'); ?>" value="<?php if ($pmpro_requirebilling) {_e('Submit and Check Out', 'paid-memberships-pro');} else {_e('Submit and Confirm', 'paid-memberships-pro');} ?> &raquo;" />
         </span>
 <?php
 
@@ -172,8 +177,6 @@ class PMProGateway_stripecheckout extends PMProGateway
      */
     static function pmpro_checkout_before_change_membership_level($user_id, $morder)
     {
-        global $discount_code_id, $wpdb;
-
         //if no order, no need to pay
         if (empty($morder))
             return;
@@ -181,13 +184,40 @@ class PMProGateway_stripecheckout extends PMProGateway
         $morder->user_id = $user_id;
         $morder->saveOrder();
 
-        //save discount code use
-        if (!empty($discount_code_id))
-            $wpdb->query("INSERT INTO $wpdb->pmpro_discount_codes_uses (code_id, user_id, order_id, timestamp) VALUES('" . $discount_code_id . "', '" . $user_id . "', '" . $morder->id . "', now())");
-        //TODO: what is this?
-        // do_action("pmpro_before_send_to_stripecheckout", $user_id, $morder);
-
         $morder->Gateway->sendToStripe($morder);
+    }
+
+
+    /**
+     * Send the data/order to Stripe.com's server
+     *
+     * @param \MemberOrder $order
+     */
+    function sendToStripe($order)
+    {
+        //load Stripe library if it hasn't been loaded already (usually by another plugin using Stripe)
+        if (!class_exists("Stripe\Stripe")) {
+            require_once(PMPRO_DIR . "/stripe-php/init.php");
+        }
+
+        $dir = home_url();
+        $stripe = new \Stripe\StripeClient('sk_test_51Kg6n8JxLtOkgj83AF1411YlBGGRqOdX7CoVQsEXL3aG9nYKWDQKEsiBwljGtVxaM7pek0JzetgSh9MYaYIGJN3V00gXDYG8Q0');
+        $res = $stripe->checkout->sessions->create([
+            'success_url' => $dir . '/membership-confirmation?id={CHECKOUT_SESSION_ID}&level=1',
+            'cancel_url' => $dir . '/membership-cancel',
+            'line_items' => [
+                [
+                    'price' => 'price_1KgCSkJxLtOkgj83I2k2yOPx',
+                    'quantity' => 2,
+                ],
+            ],
+            'mode' => 'subscription',
+        ]);
+
+        $order->payment_transaction_id = $res->id;
+        $order->saveOrder();
+        wp_redirect($res->url);
+        exit;
     }
 
 
@@ -205,44 +235,41 @@ class PMProGateway_stripecheckout extends PMProGateway
 
         //clean up a couple values
         $order->payment_type = "Stripe Checkout";
-        $order->CardType = "";
-        $order->cardtype = "";
-
-        //just save, the user will go to Stripe to pay
         $order->status = "review";
         $order->saveOrder();
 
         return true;
     }
 
+
     /**
-     * Send the data/order to Stripe.com's server
+     * Process checkout.
      *
-     * @param \MemberOrder $order
+     * @param SessionIdStripe $order
+     *
+     * @return bool
      */
-    function sendToStripe($order)
+    static function test_req_checkout_session($id, $user_id)
     {
+        //get last order
+		$last_order  = new MemberOrder();
+		$last_order->getLastMemberOrder( $user_id, "review" );
 
-        //load Stripe library if it hasn't been loaded already (usually by another plugin using Stripe)
-        if (!class_exists("Stripe\Stripe")) {
-            require_once(PMPRO_DIR . "/stripe-php/init.php");
-        }
+        $order = new MemberOrder();
+        if (empty($order->code))
+            $order->code = $order->getRandomCode();
 
-        $dir = home_url();
-        $stripe = new \Stripe\StripeClient('sk_test_51Kg6n8JxLtOkgj83AF1411YlBGGRqOdX7CoVQsEXL3aG9nYKWDQKEsiBwljGtVxaM7pek0JzetgSh9MYaYIGJN3V00gXDYG8Q0');
-        $res = $stripe->checkout->sessions->create([
-            'success_url' => $dir . '/membership-confirmation?id={CHECKOUT_SESSION_ID}',
-            'cancel_url' => $dir . '/membership-cancel',
-            'line_items' => [
-                [
-                    'price' => 'price_1KgCSkJxLtOkgj83I2k2yOPx',
-                    'quantity' => 2,
-                ],
-            ],
-            'mode' => 'subscription',
-        ]);
+        //clean up a couple values
+        $order->payment_type = "Stripe Checkout";
+        $order->user_id = $user_id;
+        $order->payment_transaction_id = $last_order->payment_transaction_id;
+        $order->status = "sucess";
+        $order->membership_id = 1;
+        $order->saveOrder();
 
-        wp_redirect($res->url);
-        exit;
+        pmpro_changeMembershipLevel(1, $user_id = null,);
+       
+        return true;
     }
+
 }

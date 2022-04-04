@@ -199,16 +199,28 @@ class PMProGateway_stripecheckout extends PMProGateway
         if (!class_exists("Stripe\Stripe")) {
             require_once(PMPRO_DIR . "/stripe-php/init.php");
         }
+        $stripe = new \Stripe\StripeClient('sk_test_51Kg6n8JxLtOkgj83AF1411YlBGGRqOdX7CoVQsEXL3aG9nYKWDQKEsiBwljGtVxaM7pek0JzetgSh9MYaYIGJN3V00gXDYG8Q0');
+
+        //List of subscriptions plan stripe IDs
+        $products = $stripe->products->all();
+        // Get level selected for purchase
+        $level_select = pmpro_getLevelAtCheckout();
+
+        foreach ($products as $product) {
+            if ($level_select->id == $product['metadata']->membership_id) {
+                $stripe_plan = $product;
+                break;
+            }
+        }
 
         $dir = home_url();
-        $stripe = new \Stripe\StripeClient('sk_test_51Kg6n8JxLtOkgj83AF1411YlBGGRqOdX7CoVQsEXL3aG9nYKWDQKEsiBwljGtVxaM7pek0JzetgSh9MYaYIGJN3V00gXDYG8Q0');
         $res = $stripe->checkout->sessions->create([
             'success_url' => $dir . '/membership-confirmation?id={CHECKOUT_SESSION_ID}&level=1',
             'cancel_url' => $dir . '/membership-cancel',
             'line_items' => [
                 [
-                    'price' => 'price_1KgCSkJxLtOkgj83I2k2yOPx',
-                    'quantity' => 2,
+                    'price' => $stripe_plan['metadata']->membership_price,
+                    'quantity' => 1,
                 ],
             ],
             'mode' => 'subscription',
@@ -251,9 +263,9 @@ class PMProGateway_stripecheckout extends PMProGateway
      */
     static function test_req_checkout_session($id, $user_id)
     {
-        //get last order
-		$last_order  = new MemberOrder();
-		$last_order->getLastMemberOrder( $user_id, "review" );
+
+        $stripe = new \Stripe\StripeClient('sk_test_51Kg6n8JxLtOkgj83AF1411YlBGGRqOdX7CoVQsEXL3aG9nYKWDQKEsiBwljGtVxaM7pek0JzetgSh9MYaYIGJN3V00gXDYG8Q0');
+        $session = $stripe->checkout->sessions->retrieve($id);
 
         $order = new MemberOrder();
         if (empty($order->code))
@@ -262,14 +274,19 @@ class PMProGateway_stripecheckout extends PMProGateway
         //clean up a couple values
         $order->payment_type = "Stripe Checkout";
         $order->user_id = $user_id;
-        $order->payment_transaction_id = $last_order->payment_transaction_id;
-        $order->status = "sucess";
         $order->membership_id = 1;
         $order->saveOrder();
+        // Check if the payment was immediate
+        if ($session['payment_status'] === "paid") {
+            $order->status = "success";
+            $order->saveOrder();
+            pmpro_changeMembershipLevel(1, $user_id);
+        } else {
+            $order->status = "review";
+            $order->saveOrder();
+        }
 
-        pmpro_changeMembershipLevel(1, $user_id = null,);
-       
-        return true;
+        exit;
     }
 
 }

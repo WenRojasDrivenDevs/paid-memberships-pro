@@ -125,6 +125,7 @@ function pmpro_page_save( $post_id ) {
 function pmpro_page_meta_wrapper() {
 	add_meta_box( 'pmpro_page_meta', __( 'Require Membership', 'paid-memberships-pro' ), 'pmpro_page_meta', 'page', 'side', 'high' );
 	add_meta_box( 'pmpro_page_meta', __( 'Require Membership', 'paid-memberships-pro' ), 'pmpro_page_meta', 'post', 'side', 'high' );
+	add_meta_box( 'pmpro_page_meta', __( 'Require Membership', 'paid-memberships-pro' ), 'pmpro_page_meta', 'video', 'side', 'high' );
 }
 if ( is_admin() ) {
 	add_action( 'admin_menu', 'pmpro_page_meta_wrapper' );

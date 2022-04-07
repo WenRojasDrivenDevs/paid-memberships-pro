@@ -884,7 +884,6 @@ function pmpro_hasMembershipLevel( $levels = null, $user_id = null ) {
 					break;
 				}
 			}
-
 			// are we looking for non-members or not?
 			if ( $negative_level ) {
 				return true;                                                        // -1/etc, negative level
@@ -1133,7 +1132,7 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
 			}
 		}
 	}
-
+    $level = (array)(pmpro_getLevel($level));
 	// insert current membership
 	if ( ! empty( $level ) ) {
 		// make sure the dates are in good formats
@@ -1142,9 +1141,11 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
 			if ( $level['cycle_period'] == '' ) {
 				$level['cycle_period'] = 0; }
 
-			// clean up date formatting (string/not string)
-			$level['startdate'] = preg_replace( '/\'/', '', $level['startdate'] );
-			$level['enddate'] = preg_replace( '/\'/', '', $level['enddate'] );
+            // clean up date formatting (string/not string)
+            if ($level['startdate'] && $level['enddate']) {
+                $level['startdate'] = preg_replace('/\'/', '', $level['startdate']);
+                $level['enddate'] = preg_replace('/\'/', '', $level['enddate']);
+            }
 
 			$sql = $wpdb->prepare(
 				"
@@ -1152,8 +1153,8 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
 					(`user_id`, `membership_id`, `code_id`, `initial_payment`, `billing_amount`, `cycle_number`, `cycle_period`, `billing_limit`, `trial_amount`, `trial_limit`, `startdate`, `enddate`)
 					VALUES
 					( %d, %d, %d, %s, %s, %d, %s, %d, %s, %d, %s, %s )",
-				$level['user_id'], // integer
-				$level['membership_id'], // integer
+                $current_user->ID, // integer
+				$level['id'], // integer
 				$level['code_id'], // integer
 				$level['initial_payment'], // float (string)
 				$level['billing_amount'], // float (string)
@@ -1162,8 +1163,8 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
 				$level['billing_limit'], // integer
 				$level['trial_amount'], // float (string)
 				$level['trial_limit'], // integer
-				$level['startdate'], // string (date)
-				$level['enddate'] // string (date)
+                date("Y-m-d H:i:s", time()), // string (date)
+                date("Y-m-d 23:59:59", strtotime("+ " . $level['cycle_number'] . " " . $level['cycle_period'], current_time("timestamp"))),
 			);
 		} else {
 			$sql = $wpdb->prepare(
@@ -2096,7 +2097,6 @@ function pmpro_getMembershipLevelsForUser( $user_id = null, $include_inactive = 
     $levels = wp_cache_get( $cache_key, 'pmpro' );
 
 	if ( $levels === false ) {
-
 		$levels = $wpdb->get_results(
 			"SELECT
 				l.id AS ID,
@@ -2107,10 +2107,10 @@ function pmpro_getMembershipLevelsForUser( $user_id = null, $include_inactive = 
 				l.confirmation,
 				l.expiration_number,
 				l.expiration_period,
-				mu.initial_payment,
-				mu.billing_amount,
-				mu.cycle_number,
-				mu.cycle_period,
+				l.initial_payment,
+				l.billing_amount,
+				l.cycle_number,
+				l.cycle_period,
 				mu.billing_limit,
 				mu.trial_amount,
 				mu.trial_limit,
@@ -2124,7 +2124,6 @@ function pmpro_getMembershipLevelsForUser( $user_id = null, $include_inactive = 
 		);
 		wp_cache_set( $cache_key, $levels, 'pmpro', 3600 );
 	}
-
 	// Round off prices
 	if ( ! empty( $levels ) ) {
 		foreach( $levels as $key => $level ) {

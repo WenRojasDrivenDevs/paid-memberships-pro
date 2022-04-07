@@ -132,8 +132,81 @@ class PMProGateway_stripecheckout extends PMProGateway
                 <p class="description"><?php esc_html_e('Go to Account &raquo; User Management in 2Checkout and create a user with API Access and API Updating.', 'paid-memberships-pro'); ?></p>
             </td>
         </tr>
+        <tr class="pmpro_settings_divider gateway gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
+        <tr class="gateway pmpro_stripecheckout_legacy_keys gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
+            <th scope="row" valign="top">
+                <label for="stripe_publishablekey"><?php _e('Publishable Key', 'paid-memberships-pro'); ?>:</label>
+            </th>
+            <td>
+                <input type="text" id="stripe_publishablekey" name="stripe_publishablekey" value="<?php echo esc_attr($values['stripe_publishablekey']) ?>" class="regular-text code" />
+                <?php
+                $public_key_prefix = substr($values['stripe_publishablekey'], 0, 3);
+                if (!empty($values['stripe_publishablekey']) && $public_key_prefix != 'pk_') {
+                ?>
+                    <p class="pmpro_red"><strong><?php _e('Your Publishable Key appears incorrect.', 'paid-memberships-pro'); ?></strong></p>
+                <?php
+                }
+                ?>
+            </td>
+        </tr>
+        <tr class="gateway pmpro_stripecheckout_legacy_keys gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
+            <th scope="row" valign="top">
+                <label for="stripe_secretkey"><?php _e('Secret Key', 'paid-memberships-pro'); ?>:</label>
+            </th>
+            <td>
+                <input type="text" id="stripe_secretkey" name="stripe_secretkey" value="<?php echo esc_attr($values['stripe_secretkey']) ?>" autocomplete="off" class="regular-text code pmpro-admin-secure-key" />
+            </td>
+        </tr>
+        <tr class="gateway pmpro_stripecheckout_legacy_keys gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
+            <th scope="row" valign="top">
+                <label><?php esc_html_e('Webhook', 'paid-memberships-pro'); ?>:</label>
+            </th>
+            <td>
+                <?php if (!empty($webhook) && is_array($webhook)) { ?>
+                    <button type="button" id="pmpro_stripe_create_webhook" class="button button-secondary" style="display: none;"><span class="dashicons dashicons-update-alt"></span> <?php _e('Create Webhook', 'paid-memberships-pro'); ?></button>
+                    <?php
+                    if ('disabled' === $webhook['status']) {
+                        // Check webhook status.
+                    ?>
+                        <div class="notice error inline">
+                            <p id="pmpro_stripe_webhook_notice" class="pmpro_stripe_webhook_notice"><?php _e('A webhook is set up in Stripe, but it is disabled.', 'paid-memberships-pro'); ?> <a id="pmpro_stripe_rebuild_webhook" href="#">Rebuild Webhook</a></p>
+                        </div>
+                    <?php
+                    } elseif ($webhook['api_version'] < PMPRO_STRIPE_API_VERSION) {
+                        // Check webhook API version.
+                    ?>
+                        <div class="notice error inline">
+                            <p id="pmpro_stripe_webhook_notice" class="pmpro_stripe_webhook_notice"><?php _e('A webhook is set up in Stripe, but it is using an old API version.', 'paid-memberships-pro'); ?> <a id="pmpro_stripe_rebuild_webhook" href="#"><?php _e('Rebuild Webhook', 'paid-memberships-pro'); ?></a></p>
+                        </div>
+                    <?php
+                    } else {
+                    ?>
+                        <div class="notice notice-success inline">
+                            <p id="pmpro_stripe_webhook_notice" class="pmpro_stripe_webhook_notice"><?php _e('Your webhook is enabled.', 'paid-memberships-pro'); ?> <a id="pmpro_stripe_delete_webhook" href="#"><?php _e('Disable Webhook', 'paid-memberships-pro'); ?></a></p>
+                        </div>
+                    <?php
+                    }
+                } 
+                ?>
+                <p class="description"><?php esc_html_e('Webhook URL', 'paid-memberships-pro'); ?>:
+                    <code><?php echo self::get_site_webhook_url(); ?></code>
+                </p>
+            </td>
+        </tr>
     <?php
     }
+
+    /**
+	 * Get current webhook URL for website to compare.
+	 * 
+	 * @since 2.4
+	 * @deprecated 2.7.0. Only deprecated for public use, will be changed to private non-static in a future version.
+	 */
+	public static function get_site_webhook_url() {
+		// Show deprecation warning if called publically.
+		pmpro_method_should_be_private( '2.7.0' );
+		return admin_url( 'admin-ajax.php' ) . '?action=stripe_webhook';
+	}
 
 
     /**
@@ -245,9 +318,17 @@ class PMProGateway_stripecheckout extends PMProGateway
         if (empty($order->code))
             $order->code = $order->getRandomCode();
 
+        global $current_user;
+        $level_select = pmpro_getLevelAtCheckout();
+
+
         //clean up a couple values
         $order->payment_type = "Stripe Checkout";
         $order->status = "review";
+        $order->notes="stripe checkout session";
+        $order->user_id = $current_user->ID;
+        $order->membership_id = $level_select->id;
+
         $order->saveOrder();
 
         return true;
@@ -261,32 +342,50 @@ class PMProGateway_stripecheckout extends PMProGateway
      *
      * @return bool
      */
-    static function test_req_checkout_session($id, $user_id)
+    static function pmpro_checkout_after_stripecheckout_session($id, $user_id)
     {
-
         $stripe = new \Stripe\StripeClient('sk_test_51Kg6n8JxLtOkgj83AF1411YlBGGRqOdX7CoVQsEXL3aG9nYKWDQKEsiBwljGtVxaM7pek0JzetgSh9MYaYIGJN3V00gXDYG8Q0');
         $session = $stripe->checkout->sessions->retrieve($id);
 
-        $order = new MemberOrder();
-        if (empty($order->code))
-            $order->code = $order->getRandomCode();
+        // Get level selected for purchase
 
+        $order = new MemberOrder();
+        $order->getLastMemberOrder( $user_id, "review" );
         //clean up a couple values
-        $order->payment_type = "Stripe Checkout";
-        $order->user_id = $user_id;
-        $order->membership_id = 1;
-        $order->saveOrder();
+        
+        $order->subscription_transaction_id = $session['subscription'];
+        $order->payment_transaction_id = $session['id'];
         // Check if the payment was immediate
         if ($session['payment_status'] === "paid") {
             $order->status = "success";
-            $order->saveOrder();
-            pmpro_changeMembershipLevel(1, $user_id);
-        } else {
-            $order->status = "review";
-            $order->saveOrder();
-        }
+            pmpro_changeMembershipLevel($order->membership_id, $user_id);
+        } 
+        $order->saveOrder();
 
-        exit;
+        return true;
     }
 
+
+    /**
+     * Process checkout.
+     *
+     * @param SessionIdStripe $order
+     *
+     * @return bool
+     */
+    static function pmpro_stripecheckout_cancel_subscription($user_id)
+    {
+        $stripe = new \Stripe\StripeClient(
+            'sk_test_51Kg6n8JxLtOkgj83AF1411YlBGGRqOdX7CoVQsEXL3aG9nYKWDQKEsiBwljGtVxaM7pek0JzetgSh9MYaYIGJN3V00gXDYG8Q0'
+          );
+          // Get last order
+          $order = new MemberOrder();
+          $order->getLastMemberOrder();
+          
+          $stripe->subscriptions->cancel(
+            $order->subscription_transaction_id,
+            []
+          );
+        return true;
+    }
 }

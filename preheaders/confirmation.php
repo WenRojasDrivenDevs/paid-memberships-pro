@@ -13,8 +13,8 @@ if ( ! is_user_logged_in() ) {
 	exit;
 }
 
-if(pmpro_getGateway() === "stripecheckout") {
-    PMProGateway_stripecheckout::test_req_checkout_session($_REQUEST['id'], $current_user->ID);
+if(pmpro_getGateway() === "stripecheckout" && !pmpro_hasMembershipLevel()) {
+    PMProGateway_stripecheckout::pmpro_checkout_after_stripecheckout_session($_REQUEST['id'], $current_user->ID);
 }
 
 // Get the membership level for the current user.

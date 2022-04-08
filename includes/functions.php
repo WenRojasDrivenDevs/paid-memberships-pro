@@ -100,6 +100,8 @@ function pmpro_setOption( $s, $v = null, $sanitize_function = 'sanitize_text_fie
 		$v = trim( $v );
 	}
 
+    
+
 	return update_option( 'pmpro_' . $s, $v, $autoload );
 }
 
@@ -1137,15 +1139,19 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
 	if ( ! empty( $level ) ) {
 		// make sure the dates are in good formats
 		if ( is_array( $level ) ) {
-			// Better support mySQL Strict Mode by passing  a proper enum value for cycle_period
-			if ( $level['cycle_period'] == '' ) {
-				$level['cycle_period'] = 0; }
+            // Better support mySQL Strict Mode by passing  a proper enum value for cycle_period
+            if ($level['cycle_period'] == '') {
+                $level['cycle_period'] = 0;
+            }
+            if (!isset($level['code_id'])) {
+                $level['code_id'] = 0;
+            }
 
             // clean up date formatting (string/not string)
-            if ($level['startdate'] && $level['enddate']) {
-                $level['startdate'] = preg_replace('/\'/', '', $level['startdate']);
-                $level['enddate'] = preg_replace('/\'/', '', $level['enddate']);
-            }
+            // if ($level['startdate'] && $level['enddate']) {
+            //     $level['startdate'] = preg_replace('/\'/', '', $level['startdate']);
+            //     $level['enddate'] = preg_replace('/\'/', '', $level['enddate']);
+            // }
 
 			$sql = $wpdb->prepare(
 				"

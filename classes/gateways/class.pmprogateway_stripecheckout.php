@@ -16,7 +16,7 @@ class PMProGateway_stripecheckout extends PMProGateway
     function __construct($gateway = NULL)
     {
 
-        
+
         $this->gateway = $gateway;
         $this->gateway_environment = pmpro_getOption("gateway_environment");
         return $this->gateway;
@@ -57,6 +57,7 @@ class PMProGateway_stripecheckout extends PMProGateway
             add_filter('pmpro_include_payment_information_fields', '__return_false');
             add_filter('pmpro_include_billing_address_fields', '__return_false');
         }
+        add_action('admin_init', array('PMProGateway_stripecheckout', 'stripecheckout_connect_save_options'));
     }
 
 
@@ -86,6 +87,8 @@ class PMProGateway_stripecheckout extends PMProGateway
     {
         $options = array(
             'stripecheckout_apiusername',
+            'stripe_secretkey',
+            'stripe_publishablekey',
         );
 
         return $options;
@@ -116,6 +119,9 @@ class PMProGateway_stripecheckout extends PMProGateway
      */
     static function pmpro_payment_option_fields($values, $gateway)
     {
+        //TODO:
+        // $environment = $livemode ? 'live' : 'sandbox';
+        $environment = 'sandbox';
 ?>
         <tr class="pmpro_settings_divider gateway gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
             <td colspan="2">
@@ -133,12 +139,12 @@ class PMProGateway_stripecheckout extends PMProGateway
             </td>
         </tr>
         <tr class="pmpro_settings_divider gateway gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
-        <tr class="gateway pmpro_stripecheckout_legacy_keys gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
+        <tr class="gateway pmpro_stripe_legacy_keys gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
             <th scope="row" valign="top">
-                <label for="stripe_publishablekey"><?php _e('Publishable Key', 'paid-memberships-pro'); ?>:</label>
+                <label for="stripe_secretkey"><?php _e('Publishable Key', 'paid-memberships-pro'); ?>:</label>
             </th>
             <td>
-                <input type="text" id="stripe_publishablekey" name="stripe_publishablekey" value="<?php echo esc_attr($values['stripe_publishablekey']) ?>" class="regular-text code" />
+                <input type="text" id="stripe_secretkey" name="stripe_secretkey" value="<?php echo esc_attr($values['stripe_publishablekey']) ?>" class="regular-text code" />
                 <?php
                 $public_key_prefix = substr($values['stripe_publishablekey'], 0, 3);
                 if (!empty($values['stripe_publishablekey']) && $public_key_prefix != 'pk_') {
@@ -149,7 +155,7 @@ class PMProGateway_stripecheckout extends PMProGateway
                 ?>
             </td>
         </tr>
-        <tr class="gateway pmpro_stripecheckout_legacy_keys gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
+        <tr class="gateway pmpro_stripe_legacy_keys gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
             <th scope="row" valign="top">
                 <label for="stripe_secretkey"><?php _e('Secret Key', 'paid-memberships-pro'); ?>:</label>
             </th>
@@ -157,7 +163,10 @@ class PMProGateway_stripecheckout extends PMProGateway
                 <input type="text" id="stripe_secretkey" name="stripe_secretkey" value="<?php echo esc_attr($values['stripe_secretkey']) ?>" autocomplete="off" class="regular-text code pmpro-admin-secure-key" />
             </td>
         </tr>
-        <tr class="gateway pmpro_stripecheckout_legacy_keys gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
+        <input type='hidden' name='<?php echo $environment; ?>_stripe_connect_user_id' id='<?php echo $environment; ?>_stripe_connect_user_id' value='<?php echo esc_attr($values[$environment . '_stripe_connect_user_id']) ?>' />
+        <input type='hidden' name='<?php echo $environment; ?>_stripe_connect_secretkey' id='<?php echo $environment; ?>_stripe_connect_secretkey' value='<?php echo esc_attr($values[$environment . '_stripe_connect_secretkey']) ?>' />
+        <input type='hidden' name='<?php echo $environment; ?>_stripe_connect_publishablekey' id='<?php echo $environment; ?>_stripe_connect_publishablekey' value='<?php echo esc_attr($values[$environment . '_stripe_connect_publishablekey']) ?>' />
+        <tr class="gateway pmpro_stripe_legacy_keys gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
             <th scope="row" valign="top">
                 <label><?php esc_html_e('Webhook', 'paid-memberships-pro'); ?>:</label>
             </th>
@@ -184,7 +193,7 @@ class PMProGateway_stripecheckout extends PMProGateway
                         <div class="notice notice-success inline">
                             <p id="pmpro_stripe_webhook_notice" class="pmpro_stripe_webhook_notice"><?php _e('Your webhook is enabled.', 'paid-memberships-pro'); ?> <a id="pmpro_stripe_delete_webhook" href="#"><?php _e('Disable Webhook', 'paid-memberships-pro'); ?></a></p>
                         </div>
-                    <?php
+                <?php
                     }
                 } 
                 ?>
@@ -197,16 +206,17 @@ class PMProGateway_stripecheckout extends PMProGateway
     }
 
     /**
-	 * Get current webhook URL for website to compare.
+     * Get current webhook URL for website to compare.
 	 * 
-	 * @since 2.4
-	 * @deprecated 2.7.0. Only deprecated for public use, will be changed to private non-static in a future version.
-	 */
-	public static function get_site_webhook_url() {
-		// Show deprecation warning if called publically.
-		pmpro_method_should_be_private( '2.7.0' );
-		return admin_url( 'admin-ajax.php' ) . '?action=stripe_webhook';
-	}
+     * @since 2.4
+     * @deprecated 2.7.0. Only deprecated for public use, will be changed to private non-static in a future version.
+     */
+    public static function get_site_webhook_url()
+    {
+        // Show deprecation warning if called publically.
+        pmpro_method_should_be_private('2.7.0');
+        return admin_url('admin-ajax.php') . '?action=stripe_webhook';
+    }
 
 
     /**
@@ -272,7 +282,7 @@ class PMProGateway_stripecheckout extends PMProGateway
         if (!class_exists("Stripe\Stripe")) {
             require_once(PMPRO_DIR . "/stripe-php/init.php");
         }
-        $stripe = new \Stripe\StripeClient('sk_test_51Kg6n8JxLtOkgj83AF1411YlBGGRqOdX7CoVQsEXL3aG9nYKWDQKEsiBwljGtVxaM7pek0JzetgSh9MYaYIGJN3V00gXDYG8Q0');
+        $stripe = new \Stripe\StripeClient(pmpro_getOption( "stripe_secretkey" ));
 
         //List of subscriptions plan stripe IDs
         $products = $stripe->products->all();
@@ -288,7 +298,7 @@ class PMProGateway_stripecheckout extends PMProGateway
 
         $dir = home_url();
         $res = $stripe->checkout->sessions->create([
-            'success_url' => $dir . '/membership-confirmation?id={CHECKOUT_SESSION_ID}&level=1',
+            'success_url' => $dir . '/membership-confirmation?id={CHECKOUT_SESSION_ID}&' . $level_select->id,
             'cancel_url' => $dir . '/membership-cancel',
             'line_items' => [
                 [
@@ -296,7 +306,7 @@ class PMProGateway_stripecheckout extends PMProGateway
                     'quantity' => 1,
                 ],
             ],
-            'mode' => 'subscription',
+            'mode' => 'payment',
         ]);
 
         $order->payment_transaction_id = $res->id;
@@ -352,7 +362,7 @@ class PMProGateway_stripecheckout extends PMProGateway
         $order = new MemberOrder();
         $order->getLastMemberOrder( $user_id, "review" );
         //clean up a couple values
-        
+
         $order->subscription_transaction_id = $session['subscription'];
         $order->payment_transaction_id = $session['id'];
         // Check if the payment was immediate
@@ -377,15 +387,81 @@ class PMProGateway_stripecheckout extends PMProGateway
     {
         $stripe = new \Stripe\StripeClient(
             'sk_test_51Kg6n8JxLtOkgj83AF1411YlBGGRqOdX7CoVQsEXL3aG9nYKWDQKEsiBwljGtVxaM7pek0JzetgSh9MYaYIGJN3V00gXDYG8Q0'
-          );
-          // Get last order
-          $order = new MemberOrder();
-          $order->getLastMemberOrder();
-          
-          $stripe->subscriptions->cancel(
+        );
+        // Get last order
+        $order = new MemberOrder();
+        $order->getLastMemberOrder();
+        
+        $stripe->subscriptions->cancel(
             $order->subscription_transaction_id,
             []
-          );
+        );
         return true;
+    }
+
+    /**
+     * This function is used to save the parameters returned after successfull connection of Stripe account.
+     *
+     * @return void
+     */
+    public static function stripecheckout_connect_save_options()
+    {
+
+        // Is user have permission to edit give setting.
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+
+
+        // Be sure only to connect when param present.
+        if (!isset($_REQUEST['pmpro_stripecheckout_connected']) || !isset($_REQUEST['pmpro_stripecheckout_connected_environment'])) {
+            return false;
+        }
+
+        // Change current gateway to Stripe
+        pmpro_setOption('gateway', 'stripecheckout');
+        pmpro_setOption('gateway_environment', $_REQUEST['pmpro_stripe_connected_environment']);
+
+        $error = '';
+        if ('false' === $_REQUEST['pmpro_stripe_connected'] && isset($_REQUEST['error_message'])) {
+            $error = $_REQUEST['error_message'];
+        } elseif (
+            'false' === $_REQUEST['pmpro_stripe_connected']
+            || !isset($_REQUEST['pmpro_stripe_publishable_key'])
+            || !isset($_REQUEST['pmpro_stripe_user_id'])
+            || !isset($_REQUEST['pmpro_stripe_access_token'])
+        ) {
+            $error = __('Invalid response from the Stripe Connect server.', 'paid-memberships-pro');
+        } else {
+
+            // Update keys.
+            if ($_REQUEST['pmpro_stripe_connected_environment'] === 'live') {
+                // Update live keys.
+                pmpro_setOption('live_stripe_connect_user_id', $_REQUEST['pmpro_stripe_user_id']);
+                pmpro_setOption('live_stripe_connect_secretkey', $_REQUEST['pmpro_stripe_access_token']);
+                pmpro_setOption('live_stripe_connect_publishablekey', $_REQUEST['pmpro_stripe_publishable_key']);
+            } else {
+                // Update sandbox keys.
+                pmpro_setOption('sandbox_stripe_connect_user_id', $_REQUEST['pmpro_stripe_user_id']);
+                pmpro_setOption('sandbox_stripe_connect_secretkey', $_REQUEST['pmpro_stripe_access_token']);
+                pmpro_setOption('sandbox_stripe_connect_publishablekey', $_REQUEST['pmpro_stripe_publishable_key']);
+            }
+
+
+            // Delete option for user API key.
+            delete_option('pmpro_stripe_secretkey');
+            delete_option('pmpro_stripe_publishablekey');
+            wp_redirect(admin_url('admin.php?page=pmpro-paymentsettings'));
+            exit;
+        }
+
+        if (!empty($error)) {
+            global $pmpro_stripe_error;
+            $pmpro_stripe_error = sprintf(
+                /* translators: %s Error Message */
+                __('<strong>Error:</strong> PMPro could not connect to the Stripe API. Reason: %s', 'paid-memberships-pro'),
+                esc_html($error)
+            );
+        }
     }
 }

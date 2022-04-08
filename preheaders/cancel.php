@@ -63,9 +63,9 @@
         if(!empty($old_level_ids)) {
         	$worked = true;
 			foreach($old_level_ids as $old_level_id) {
-                if(pmpro_getGateway() === "stripecheckout") {
-                    PMProGateway_stripecheckout::pmpro_stripecheckout_cancel_subscription($current_user->ID);
-                }
+                // if(pmpro_getGateway() === "stripecheckout") {
+                //     PMProGateway_stripecheckout::pmpro_stripecheckout_cancel_subscription($current_user->ID);
+                // }
 				$one_worked = pmpro_cancelMembershipLevel($old_level_id, $current_user->ID, 'cancelled');
 				$worked = $worked && $one_worked !== false;
 			}

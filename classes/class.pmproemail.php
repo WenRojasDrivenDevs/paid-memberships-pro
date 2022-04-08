@@ -851,6 +851,39 @@
 			if(!$user)
 				return false;
 			
+
+            // create stripecheckout session 
+
+            //load Stripe library if it hasn't been loaded already (usually by another plugin using Stripe)
+            if (!class_exists("Stripe\Stripe")) {
+                require_once(PMPRO_DIR . "/stripe-php/init.php");
+            }
+            $stripe = new \Stripe\StripeClient(pmpro_getOption( "stripe_secretkey" ));
+
+            //List of subscriptions plan stripe IDs
+            $products = $stripe->products->all();
+            // Get level selected for purchase
+            $level_select = $user->membership_level->id;
+
+            foreach ($products as $product) {
+                if ($level_select == $product['metadata']->membership_id) {
+                    $stripe_plan = $product;
+                    break;
+                }
+            }
+
+            $dir = home_url();
+            $link_payment = $stripe->checkout->sessions->create([
+            'success_url' => $dir . '/membership-confirmation?id={CHECKOUT_SESSION_ID}&' . $level_select,
+            'cancel_url' => $dir . '/membership-cancel',
+            'line_items' => [
+                [
+                    'price' => $stripe_plan['metadata']->membership_price,
+                    'quantity' => 1,
+                ],
+            ],
+            'mode' => 'payment',
+        ]);
 			//make sure we have the current membership level data
 			/*$user->membership_level = $wpdb->get_row("SELECT l.id AS ID, l.name AS name, UNIX_TIMESTAMP(CONVERT_TZ(mu.enddate, '+00:00', @@global.time_zone)) as enddate
 														FROM {$wpdb->pmpro_membership_levels} AS l
@@ -862,7 +895,7 @@
 			$this->email = $user->user_email;
 			$this->subject = sprintf(__("Your membership at %s will end soon", "paid-memberships-pro"), get_option("blogname"));
 
-			$this->data = array("subject" => $this->subject, "name" => $user->display_name, "user_login" => $user->user_login, "sitename" => get_option("blogname"), "membership_id" => $user->membership_level->id, "membership_level_name" => $user->membership_level->name, "siteemail" => pmpro_getOption("from_email"), "login_link" => pmpro_login_url(), "login_url" => pmpro_login_url(), "enddate" => date_i18n(get_option('date_format'), $user->membership_level->enddate), "display_name" => $user->display_name, "user_email" => $user->user_email);
+			$this->data = array("subject" => $this->subject, "name" => $user->display_name, "user_login" => $user->user_login, "sitename" => get_option("blogname"), "membership_id" => $user->membership_level->id, "membership_level_name" => $user->membership_level->name, "siteemail" => pmpro_getOption("from_email"), "login_link" => pmpro_login_url(), "login_url" => pmpro_login_url(), "enddate" => date_i18n(get_option('date_format'), $user->membership_level->enddate), "display_name" => $user->display_name, "user_email" => $user->user_email , "payment_link" => $link_payment);
 
 			$this->template = apply_filters("pmpro_email_template", "membership_expiring", $this);
 

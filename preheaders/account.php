@@ -15,9 +15,6 @@ if( $current_user->ID ) {
     $current_user->membership_level = pmpro_getMembershipLevelForUser( $current_user->ID );
 }
 
-// verify if membership is active
-pmpro_cron_expire_memberships();
-
 
 // Process the msg param.
 if ( isset($_REQUEST['msg'] ) ) {

@@ -352,12 +352,15 @@
 			if(empty($payment_transaction_id))
 				return false;
 
-			global $wpdb;
-			$id = $wpdb->get_var("SELECT id FROM $wpdb->pmpro_membership_orders WHERE payment_transaction_id = '" . esc_sql($payment_transaction_id) . "' LIMIT 1");
-			if($id)
-				return $this->getMemberOrderByID($id);
-			else
-				return false;
+            global $wpdb;
+            $order_by_transaction_id = $wpdb->get_var("SELECT * FROM $wpdb->pmpro_membership_orders WHERE payment_transaction_id = '$payment_transaction_id' LIMIT 1");
+        
+            $order_by_id= $wpdb->get_row("SELECT * FROM $wpdb->pmpro_membership_orders WHERE id = '$order_by_transaction_id'");
+
+            if(!empty($order_by_id))
+                return $order_by_id;
+            else
+                return false;
 		}
 
 		/**

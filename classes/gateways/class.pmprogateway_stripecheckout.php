@@ -309,7 +309,7 @@ class PMProGateway_stripecheckout extends PMProGateway
             'mode' => 'payment',
         ]);
 
-        $order->payment_transaction_id = $res->id;
+        $order->payment_transaction_id = $res->payment_intent;
         $order->saveOrder();
         wp_redirect($res->url);
         exit;
@@ -335,7 +335,6 @@ class PMProGateway_stripecheckout extends PMProGateway
         //clean up a couple values
         $order->payment_type = "Stripe Checkout";
         $order->status = "review";
-        $order->notes="stripe checkout session";
         $order->user_id = $current_user->ID;
         $order->membership_id = $level_select->id;
 
@@ -363,8 +362,7 @@ class PMProGateway_stripecheckout extends PMProGateway
         $order->getLastMemberOrder( $user_id, "review" );
         //clean up a couple values
 
-        $order->subscription_transaction_id = $session['subscription'];
-        $order->payment_transaction_id = $session['id'];
+        $order->payment_transaction_id = $session['payment_intent'];
         // Check if the payment was immediate
         if ($session['payment_status'] === "paid") {
             $order->status = "success";

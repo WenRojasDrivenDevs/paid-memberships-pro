@@ -1016,13 +1016,15 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
 		unset( $level_obj );
 	}
 
-	// if it's a custom level, they're changing
-	if ( ! is_array( $level ) ) {
-		// are they even changing?
-		if ( pmpro_hasMembershipLevel( $level, $user_id ) ) {
-			return;
-		}
-	}
+    //TODO: VERYFY pmpro_hasMembershipLevel
+
+	// // if it's a custom level, they're changing
+	// if ( ! is_array( $level ) ) {
+	// 	// are they even changing?
+	// 	if ( pmpro_hasMembershipLevel( $level, $user_id ) ) {
+	// 		return;
+	// 	}
+	// }
 
 	// get all active membershipships for this user
 	$old_levels = pmpro_getMembershipLevelsForUser( $user_id );
@@ -1096,19 +1098,14 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
 
 		$other_order_ids = $wpdb->get_col( "SELECT id FROM $wpdb->pmpro_membership_orders WHERE user_id = '" . esc_sql( $user_id ) . "' AND status = 'success' AND membership_id = '" . esc_sql( $cancel_level ) . "' ORDER BY id DESC LIMIT 1" );
 	} else {
-		$pmpro_cancel_previous_subscriptions = true;
+		$pmpro_cancel_previous_subscriptions = false;
 		if ( isset( $_REQUEST['cancel_membership'] ) && $_REQUEST['cancel_membership'] == false ) {
 			$pmpro_cancel_previous_subscriptions = false;
 		}
 		$pmpro_cancel_previous_subscriptions = apply_filters( 'pmpro_cancel_previous_subscriptions', $pmpro_cancel_previous_subscriptions );
 
 		$other_order_ids = $wpdb->get_col(
-			"SELECT id, IF(subscription_transaction_id = '', CONCAT('UNIQUE_SUB_ID_', id), subscription_transaction_id) as unique_sub_id
-											FROM $wpdb->pmpro_membership_orders
-											WHERE user_id = '" . esc_sql( $user_id ) . "'
-												AND status = 'success'
-											GROUP BY unique_sub_id
-											ORDER BY id DESC"
+			"SELECT id, IF(subscription_transaction_id = '', CONCAT('UNIQUE_SUB_ID_', id), subscription_transaction_id) as unique_sub_id FROM $wpdb->pmpro_membership_orders WHERE user_id = '" . esc_sql( $user_id ) . "' AND status = 'success' GROUP BY unique_sub_id ORDER BY id DESC"
 		);
 	}
 
@@ -1147,11 +1144,8 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
                 $level['code_id'] = 0;
             }
 
-            // clean up date formatting (string/not string)
-            // if ($level['startdate'] && $level['enddate']) {
-            //     $level['startdate'] = preg_replace('/\'/', '', $level['startdate']);
-            //     $level['enddate'] = preg_replace('/\'/', '', $level['enddate']);
-            // }
+            $user_id = $user_id ? $user_id : $current_user->ID;
+            $user_temp = $wpdb->get_row("SELECT * FROM $wpdb->pmpro_memberships_users WHERE user_id = '" . $user_id . "' LIMIT 1");
 
 			$sql = $wpdb->prepare(
 				"
@@ -1159,7 +1153,7 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
 					(`user_id`, `membership_id`, `code_id`, `initial_payment`, `billing_amount`, `cycle_number`, `cycle_period`, `billing_limit`, `trial_amount`, `trial_limit`, `startdate`, `enddate`)
 					VALUES
 					( %d, %d, %d, %s, %s, %d, %s, %d, %s, %d, %s, %s )",
-                $current_user->ID, // integer
+                $user_id, // integer
 				$level['id'], // integer
 				$level['code_id'], // integer
 				$level['initial_payment'], // float (string)
@@ -1170,7 +1164,10 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
 				$level['trial_amount'], // float (string)
 				$level['trial_limit'], // integer
                 date("Y-m-d H:i:s", time()), // string (date)
-                date("Y-m-d 23:59:59", strtotime("+ " . $level['cycle_number'] . " " . $level['cycle_period'], current_time("timestamp"))),
+                // if membership is active add 30 days at the end date
+                $user_temp->status == 'active' 
+                ? date("Y-m-d 23:59:59", strtotime($user_temp->enddate . " + " . $level['cycle_number'] . " " . $level['cycle_period'])) 
+                : date("Y-m-d 23:59:59", strtotime("+ " . $level['cycle_number'] . " " . $level['cycle_period'], current_time("timestamp"))), // string (date)
 			);
 		} else {
 			$sql = $wpdb->prepare(

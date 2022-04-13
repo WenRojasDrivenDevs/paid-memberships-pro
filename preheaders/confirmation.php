@@ -13,7 +13,18 @@ if ( ! is_user_logged_in() ) {
 	exit;
 }
 
-if(pmpro_getGateway() === "stripecheckout" && !pmpro_hasMembershipLevel()) {
+$mylevels = pmpro_getMembershipLevelsForUser();
+$level_is_expiring = false;
+
+foreach ($mylevels as $mylevel) {
+    if (pmpro_isLevelExpiringSoon( $mylevel )) {
+        $level_is_expiring = true;
+        break;
+    }
+}
+
+// TODO: pmpro_hasMembershipLevel verification
+if( pmpro_getGateway() === "stripecheckout" && $level_is_expiring ) {
     PMProGateway_stripecheckout::pmpro_checkout_after_stripecheckout_session($_REQUEST['id'], $current_user->ID);
 }
 
@@ -35,6 +46,7 @@ if ( ! pmpro_hasMembershipLevel() && ! in_array( pmpro_getGateway(), $gateways_w
     wp_redirect( $redirect_url );
     exit;
 }
+
 
 // If membership is a paying one, get invoice from DB
 if ( ! empty( $current_user->membership_level ) && ! pmpro_isLevelFree( $current_user->membership_level ) ) {

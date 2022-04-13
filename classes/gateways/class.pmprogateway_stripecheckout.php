@@ -353,21 +353,19 @@ class PMProGateway_stripecheckout extends PMProGateway
      */
     static function pmpro_checkout_after_stripecheckout_session($id, $user_id)
     {
-        $stripe = new \Stripe\StripeClient('sk_test_51Kg6n8JxLtOkgj83AF1411YlBGGRqOdX7CoVQsEXL3aG9nYKWDQKEsiBwljGtVxaM7pek0JzetgSh9MYaYIGJN3V00gXDYG8Q0');
+        $stripe = new \Stripe\StripeClient(pmpro_getOption("stripe_secretkey"));
         $session = $stripe->checkout->sessions->retrieve($id);
-
-        // Get level selected for purchase
 
         $order = new MemberOrder();
         $order->getLastMemberOrder( $user_id, "review" );
         //clean up a couple values
-
         $order->payment_transaction_id = $session['payment_intent'];
         // Check if the payment was immediate
         if ($session['payment_status'] === "paid") {
             $order->status = "success";
             pmpro_changeMembershipLevel($order->membership_id, $user_id);
         } 
+
         $order->saveOrder();
 
         return true;

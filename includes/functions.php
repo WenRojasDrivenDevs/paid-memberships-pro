@@ -281,48 +281,57 @@ function pmpro_isLevelExpiring( &$level ) {
  * @param object $level PMPro Level Object to test
  */
 function pmpro_isLevelExpiringSoon( &$level ) {
-	if ( ! pmpro_isLevelExpiring( $level ) || empty( $level->enddate ) ) {
-		$r = false;
-	} else {
-		// days til expiration for the standard level
-		$standard = pmpro_getLevel( $level->id );
+    if (!pmpro_isLevelExpiring($level) || empty($level->enddate)) {
+        $r = false;
+    } else {
+        // days til expiration for the standard level
+        $standard = pmpro_getLevel($level->id);
 
-		if ( ! empty( $standard->expiration_number ) ) {
-			if ( $standard->expiration_period == 'Hour' ) {
-				$days = $level->expiration_number;
-			} else if ( $standard->expiration_period == 'Day' ) {
-				$days = $level->expiration_number;
-			} elseif ( $standard->expiration_period == 'Week' ) {
-				$days = $level->expiration_number * 7;
-			} elseif ( $standard->expiration_period == 'Month' ) {
-				$days = $level->expiration_number * 30;
-			} elseif ( $standard->expiration_period == 'Year' ) {
-				$days = $level->expiration_number * 365;
-			}
-		} else {
-			$days = 30;
-		}
+        if($standard->expiration_number == 0){
+            $r = false;
+        } else {
+            if (!empty($standard->expiration_number)) {
+                if ($standard->expiration_period == 'Hour') {
+                    $days = $level->expiration_number;
+                } else if ($standard->expiration_period == 'Day') {
+                    $days = $level->expiration_number;
+                } elseif ($standard->expiration_period == 'Week') {
+                    $days = $level->expiration_number * 7;
+                } elseif ($standard->expiration_period == 'Month') {
+                    $days = $level->expiration_number * 30;
+                } elseif ($standard->expiration_period == 'Year') {
+                    $days = $level->expiration_number * 365;
+                }
+            } else {
+                $days = 30;
+            }
+            
+            // are we within the days til expiration?
+            $now = current_time('timestamp');
+    
+            if ($standard->expiration_period == 'Hour') {
+                if ($now + ($days * 60) >= $level->enddate) {
+                    $r = true;
+                } else {
+                    $r = false;
+                }
+            } else if ($now + ($days * 3600 * 24) >= $level->enddate) {
+                $r = true;
+            } else {
+                $r = false;
+            }
+        }
+        // calculation of how many days are left for the membership to expire
+        $membership_level_expiration = $level->enddate - $level->startdate;
+        if($membership_level_expiration < 3600 * 24 * 7){
+            $r = true;
+        } 
+    }
 
-		// are we within the days til expiration?
-		$now = current_time( 'timestamp' );
+    // filter
+    $r = apply_filters('pmpro_is_level_expiring_soon', $r, $level);
 
-		if( $standard->expiration_period == 'Hour' ){
-			if( $now + ( $days * 60 ) >= $level->enddate ){
-				$r = true;
-			} else {
-				$r = false;
-			}
-		} else if ( $now + ( $days * 3600 * 24 ) >= $level->enddate ) {
-			$r = true;
-		} else {
-			$r = false;
-		}
-	}
-
-	// filter
-	$r = apply_filters( 'pmpro_is_level_expiring_soon', $r, $level );
-
-	return $r;
+    return $r;
 }
 
 /**
@@ -1007,13 +1016,12 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
 		unset( $level_obj );
 	} else {
 		// just level id
-		$level_obj = pmpro_getLevel( $level );
+		$level_obj = (array) pmpro_getLevel( $level );
 		if ( empty( $level_obj ) ) {
 			$pmpro_error = __( 'Invalid level.', 'paid-memberships-pro' );
 			return false;
 		}
-		$level = $level_obj->id;
-		unset( $level_obj );
+		$level = $level_obj['id'];
 	}
 
     //TODO: VERYFY pmpro_hasMembershipLevel
@@ -1131,44 +1139,53 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
 			}
 		}
 	}
-    $level = (array)(pmpro_getLevel($level));
+
 	// insert current membership
-	if ( ! empty( $level ) ) {
+	if ( ! empty( $level_obj ) ) {
+        
 		// make sure the dates are in good formats
-		if ( is_array( $level ) ) {
+		if ( is_array( $level_obj ) ) {
             // Better support mySQL Strict Mode by passing  a proper enum value for cycle_period
-            if ($level['cycle_period'] == '') {
-                $level['cycle_period'] = 0;
+            if ($level_obj['cycle_period'] == '') {
+                $level_obj['cycle_period'] = 0;
             }
-            if (!isset($level['code_id'])) {
-                $level['code_id'] = 0;
+            if (!isset($level_obj['code_id'])) {
+                $level_obj['code_id'] = 0;
             }
 
             $user_id = $user_id ? $user_id : $current_user->ID;
-            $user_temp = $wpdb->get_row("SELECT * FROM $wpdb->pmpro_memberships_users WHERE user_id = '" . $user_id . "' LIMIT 1");
+            // seachr last id in pmpro_memberships_users table
+            $last_membership = (array) $wpdb->get_row("SELECT MAX(id) FROM $wpdb->pmpro_memberships_users WHERE user_id = '" . $user_id . "' ORDER BY user_id LIMIT 1");
+            // search las membership object in pmpro_memberships_users table
+            $user_temp = $wpdb->get_row("SELECT * FROM $wpdb->pmpro_memberships_users WHERE user_id = '" . $user_id . "' AND id = '" . $last_membership["MAX(id)"] . "' LIMIT 1");
+            unset ($last_membership);
 
-			$sql = $wpdb->prepare(
-				"
+            $now = current_time('mysql');
+
+            $previous_enddate = date("Y-m-d 23:59:59", strtotime($user_temp->stardate . $level_obj['cycle_number'] . " " . $level_obj['cycle_period']));
+
+            $sql = $wpdb->prepare(
+                "
 					INSERT INTO {$wpdb->pmpro_memberships_users}
 					(`user_id`, `membership_id`, `code_id`, `initial_payment`, `billing_amount`, `cycle_number`, `cycle_period`, `billing_limit`, `trial_amount`, `trial_limit`, `startdate`, `enddate`)
 					VALUES
 					( %d, %d, %d, %s, %s, %d, %s, %d, %s, %d, %s, %s )",
                 $user_id, // integer
-				$level['id'], // integer
-				$level['code_id'], // integer
-				$level['initial_payment'], // float (string)
-				$level['billing_amount'], // float (string)
-				$level['cycle_number'], // integer
-				$level['cycle_period'], // string (enum)
-				$level['billing_limit'], // integer
-				$level['trial_amount'], // float (string)
-				$level['trial_limit'], // integer
+                $level_obj['id'], // integer
+                $level_obj['code_id'], // integer
+                $level_obj['initial_payment'], // float (string)
+                $level_obj['billing_amount'], // float (string)
+                $level_obj['cycle_number'], // integer
+                $level_obj['cycle_period'], // string (enum)
+                $level_obj['billing_limit'], // integer
+                $level_obj['trial_amount'], // float (string)
+                $level_obj['trial_limit'], // integer
                 date("Y-m-d H:i:s", time()), // string (date)
                 // if membership is active add 30 days at the end date
-                $user_temp->status == 'active' 
-                ? date("Y-m-d 23:59:59", strtotime($user_temp->enddate . " + " . $level['cycle_number'] . " " . $level['cycle_period'])) 
-                : date("Y-m-d 23:59:59", strtotime("+ " . $level['cycle_number'] . " " . $level['cycle_period'], current_time("timestamp"))), // string (date)
-			);
+                $now < $previous_enddate
+                    ? date("Y-m-d 23:59:59", strtotime($previous_enddate . " + " . $level_obj['cycle_number'] . " " . $level_obj['cycle_period']))
+                    : date("Y-m-d 23:59:59", strtotime("+ " . $level_obj['cycle_number'] . " " . $level_obj['cycle_period'], current_time("timestamp"))), // string (date)
+            );
 		} else {
 			$sql = $wpdb->prepare(
 				"
@@ -1195,6 +1212,8 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
 			$pmpro_error = sprintf( __( 'Error interacting with database: %s', 'paid-memberships-pro' ), ( ! empty( $wpdb->last_error ) ? $wpdb->last_error : 'unavailable' ) );
 			return false;
 		}
+
+        unset( $level_obj );
 
 		/**
 		 * Allow filtering whether to remove duplicate "active" memberships by setting them to "changed".

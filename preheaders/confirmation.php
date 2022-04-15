@@ -23,9 +23,10 @@ foreach ($mylevels as $mylevel) {
     }
 }
 
-// TODO: pmpro_hasMembershipLevel verification
-if( pmpro_getGateway() === "stripecheckout" && $level_is_expiring ) {
-    PMProGateway_stripecheckout::pmpro_checkout_after_stripecheckout_session($_REQUEST['id'], $current_user->ID);
+if( pmpro_getGateway() === "stripecheckout" ) {
+    if((pmpro_hasMembershipLevel() && $level_is_expiring) || !pmpro_hasMembershipLevel()) {
+        PMProGateway_stripecheckout::pmpro_checkout_after_stripecheckout_session($_REQUEST['id'], $current_user->ID);
+    }
 }
 
 // Get the membership level for the current user.

@@ -87,8 +87,8 @@ class PMProGateway_stripecheckout extends PMProGateway
     {
         $options = array(
             'stripecheckout_apiusername',
-            'stripe_secretkey',
-            'stripe_publishablekey',
+            'stripecheckout_secretkey',
+            'stripecheckout_publishablekey',
         );
 
         return $options;
@@ -141,13 +141,13 @@ class PMProGateway_stripecheckout extends PMProGateway
         <tr class="pmpro_settings_divider gateway gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
         <tr class="gateway pmpro_stripe_legacy_keys gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
             <th scope="row" valign="top">
-                <label for="stripe_secretkey"><?php _e('Publishable Key', 'paid-memberships-pro'); ?>:</label>
+                <label for="stripecheckout_publishablekey"><?php _e('Publishable Key', 'paid-memberships-pro'); ?>:</label>
             </th>
             <td>
-                <input type="text" id="stripe_secretkey" name="stripe_secretkey" value="<?php echo esc_attr($values['stripe_publishablekey']) ?>" class="regular-text code" />
+                <input type="text" id="stripecheckout_publishablekey" name="stripecheckout_publishablekey" value="<?php echo esc_attr($values['stripecheckout_publishablekey']) ?>" class="regular-text code" />
                 <?php
-                $public_key_prefix = substr($values['stripe_publishablekey'], 0, 3);
-                if (!empty($values['stripe_publishablekey']) && $public_key_prefix != 'pk_') {
+                $public_key_prefix = substr($values['stripecheckout_publishablekey'], 0, 3);
+                if (!empty($values['stripecheckout_publishablekey']) && $public_key_prefix != 'pk_') {
                 ?>
                     <p class="pmpro_red"><strong><?php _e('Your Publishable Key appears incorrect.', 'paid-memberships-pro'); ?></strong></p>
                 <?php
@@ -157,10 +157,10 @@ class PMProGateway_stripecheckout extends PMProGateway
         </tr>
         <tr class="gateway pmpro_stripe_legacy_keys gateway_stripecheckout" <?php if ($gateway != "stripecheckout") { ?>style="display: none;" <?php } ?>>
             <th scope="row" valign="top">
-                <label for="stripe_secretkey"><?php _e('Secret Key', 'paid-memberships-pro'); ?>:</label>
+                <label for="stripecheckout_secretkey"><?php _e('Secret Key', 'paid-memberships-pro'); ?>:</label>
             </th>
             <td>
-                <input type="text" id="stripe_secretkey" name="stripe_secretkey" value="<?php echo esc_attr($values['stripe_secretkey']) ?>" autocomplete="off" class="regular-text code pmpro-admin-secure-key" />
+                <input type="text" id="stripecheckout_secretkey" name="stripecheckout_secretkey" value="<?php echo esc_attr($values['stripecheckout_secretkey']) ?>" autocomplete="off" class="regular-text code pmpro-admin-secure-key" />
             </td>
         </tr>
         <input type='hidden' name='<?php echo $environment; ?>_stripe_connect_user_id' id='<?php echo $environment; ?>_stripe_connect_user_id' value='<?php echo esc_attr($values[$environment . '_stripe_connect_user_id']) ?>' />
@@ -282,10 +282,13 @@ class PMProGateway_stripecheckout extends PMProGateway
         if (!class_exists("Stripe\Stripe")) {
             require_once(PMPRO_DIR . "/stripe-php/init.php");
         }
-        $stripe = new \Stripe\StripeClient(pmpro_getOption( "stripe_secretkey" ));
+
+        //set api key
+        $stripe = new \Stripe\StripeClient(pmpro_getOption("stripecheckout_secretkey"));
 
         //List of subscriptions plan stripe IDs
-        $products = $stripe->products->all();
+        $products = $stripe->products->all(["active" => true]);
+
         // Get level selected for purchase
         $level_select = pmpro_getLevelAtCheckout();
 
@@ -353,18 +356,18 @@ class PMProGateway_stripecheckout extends PMProGateway
      */
     static function pmpro_checkout_after_stripecheckout_session($id, $user_id)
     {
-        $stripe = new \Stripe\StripeClient(pmpro_getOption("stripe_secretkey"));
+        $stripe = new \Stripe\StripeClient(pmpro_getOption("stripecheckout_secretkey"));
         $session = $stripe->checkout->sessions->retrieve($id);
 
         $order = new MemberOrder();
-        $order->getLastMemberOrder( $user_id, "review" );
+        $order->getLastMemberOrder($user_id, "review");
         //clean up a couple values
         $order->payment_transaction_id = $session['payment_intent'];
         // Check if the payment was immediate
         if ($session['payment_status'] === "paid") {
             $order->status = "success";
             pmpro_changeMembershipLevel($order->membership_id, $user_id);
-        } 
+        }
 
         $order->saveOrder();
 
@@ -382,7 +385,7 @@ class PMProGateway_stripecheckout extends PMProGateway
     static function pmpro_stripecheckout_cancel_subscription($user_id)
     {
         $stripe = new \Stripe\StripeClient(
-            'sk_test_51Kg6n8JxLtOkgj83AF1411YlBGGRqOdX7CoVQsEXL3aG9nYKWDQKEsiBwljGtVxaM7pek0JzetgSh9MYaYIGJN3V00gXDYG8Q0'
+            pmpro_getOption("stripecheckout_secretkey")
         );
         // Get last order
         $order = new MemberOrder();
@@ -408,48 +411,34 @@ class PMProGateway_stripecheckout extends PMProGateway
             return;
         }
 
-
-        // Be sure only to connect when param present.
-        if (!isset($_REQUEST['pmpro_stripecheckout_connected']) || !isset($_REQUEST['pmpro_stripecheckout_connected_environment'])) {
-            return false;
+        if (!$_REQUEST['pmpro_stripe_access_token']) {
+            return;
         }
-
         // Change current gateway to Stripe
         pmpro_setOption('gateway', 'stripecheckout');
-        pmpro_setOption('gateway_environment', $_REQUEST['pmpro_stripe_connected_environment']);
+        pmpro_setOption('gateway_environment', $_REQUEST['pmpro_stripecheckout_connected_environment']);
 
         $error = '';
-        if ('false' === $_REQUEST['pmpro_stripe_connected'] && isset($_REQUEST['error_message'])) {
-            $error = $_REQUEST['error_message'];
-        } elseif (
-            'false' === $_REQUEST['pmpro_stripe_connected']
-            || !isset($_REQUEST['pmpro_stripe_publishable_key'])
-            || !isset($_REQUEST['pmpro_stripe_user_id'])
-            || !isset($_REQUEST['pmpro_stripe_access_token'])
-        ) {
-            $error = __('Invalid response from the Stripe Connect server.', 'paid-memberships-pro');
+        // Update keys.
+        if ($_REQUEST['pmpro_stripecheckout_connected_environment'] === 'live') {
+            // Update live keys.
+            pmpro_setOption('live_stripe_connect_user_id', $_REQUEST['pmpro_stripe_user_id']);
+            pmpro_setOption('live_stripe_connect_secretkey', $_REQUEST['pmpro_stripe_access_token']);
+            pmpro_setOption('live_stripe_connect_publishablekey', $_REQUEST['pmpro_stripe_publishable_key']);
         } else {
-
-            // Update keys.
-            if ($_REQUEST['pmpro_stripe_connected_environment'] === 'live') {
-                // Update live keys.
-                pmpro_setOption('live_stripe_connect_user_id', $_REQUEST['pmpro_stripe_user_id']);
-                pmpro_setOption('live_stripe_connect_secretkey', $_REQUEST['pmpro_stripe_access_token']);
-                pmpro_setOption('live_stripe_connect_publishablekey', $_REQUEST['pmpro_stripe_publishable_key']);
-            } else {
-                // Update sandbox keys.
-                pmpro_setOption('sandbox_stripe_connect_user_id', $_REQUEST['pmpro_stripe_user_id']);
-                pmpro_setOption('sandbox_stripe_connect_secretkey', $_REQUEST['pmpro_stripe_access_token']);
-                pmpro_setOption('sandbox_stripe_connect_publishablekey', $_REQUEST['pmpro_stripe_publishable_key']);
-            }
-
-
-            // Delete option for user API key.
-            delete_option('pmpro_stripe_secretkey');
-            delete_option('pmpro_stripe_publishablekey');
-            wp_redirect(admin_url('admin.php?page=pmpro-paymentsettings'));
-            exit;
+            // Update sandbox keys.
+            pmpro_setOption('sandbox_stripe_connect_user_id', $_REQUEST['pmpro_stripe_user_id']);
+            pmpro_setOption('sandbox_stripe_connect_secretkey', $_REQUEST['pmpro_stripe_access_token']);
+            pmpro_setOption('sandbox_stripe_connect_publishablekey', $_REQUEST['pmpro_stripe_publishable_key']);
         }
+
+
+        // Delete option for user API key.
+        delete_option('pmpro_stripe_secretkey');
+        delete_option('pmpro_stripe_publishablekey');
+        wp_redirect(admin_url('admin.php?page=pmpro-paymentsettings'));
+        exit;
+
 
         if (!empty($error)) {
             global $pmpro_stripe_error;

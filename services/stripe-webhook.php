@@ -49,20 +49,29 @@ if (empty($_REQUEST['event_id'])) {
 }
 
 
-try {
-    //TODO: PMProGateway_stripe::using_legacy_keys() for stripeCheckout 
-    $secret_key = pmpro_getOption("stripe_secretkey");
-    // if (PMProGateway_stripe::using_legacy_keys()) {
-    //     $secret_key = pmpro_getOption("stripe_secretkey");
-    // } elseif ($livemode) {
-    //     $secret_key = pmpro_getOption('live_stripe_connect_secretkey');
-    // } else {
-    //     $secret_key = pmpro_getOption('sandbox_stripe_connect_secretkey');
-    // }
-    Stripe\Stripe::setApiKey($secret_key);
-} catch (Exception $e) {
-    $logstr .= "Unable to set API key for Stripe gateway: " . $e->getMessage();
-    pmpro_stripeWebhookExit();
+if ($gateway === "stripe") {
+    try {
+        $secret_key = pmpro_getOption("stripe_secretkey");
+        if (PMProGateway_stripe::using_legacy_keys()) {
+            $secret_key = pmpro_getOption("stripe_secretkey");
+        } elseif ($livemode) {
+            $secret_key = pmpro_getOption('live_stripe_connect_secretkey');
+        } else {
+            $secret_key = pmpro_getOption('sandbox_stripe_connect_secretkey');
+        }
+        Stripe\Stripe::setApiKey($secret_key);
+    } catch (Exception $e) {
+        $logstr .= "Unable to set API key for Stripe gateway: " . $e->getMessage();
+        pmpro_stripeWebhookExit();
+    }
+} else if ($gateway === "stripecheckout") {
+    try {
+        $secret_key = pmpro_getOption("stripecheckout_secretkey");
+        Stripe\Stripe::setApiKey($secret_key);
+    } catch (Exception $e) {
+        $logstr .= "Unable to set API key for Stripe gateway: " . $e->getMessage();
+        pmpro_stripeWebhookExit();
+    }
 }
 
 

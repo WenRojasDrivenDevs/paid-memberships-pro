@@ -411,7 +411,7 @@ class PMProGateway_stripecheckout extends PMProGateway
             return;
         }
 
-        if (!$_REQUEST['pmpro_stripe_access_token']) {
+        if (empty($_REQUEST['pmpro_stripe_access_token'])) {
             return;
         }
         // Change current gateway to Stripe

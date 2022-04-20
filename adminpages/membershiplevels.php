@@ -180,6 +180,33 @@
 		}
 
 		do_action("pmpro_save_membership_level", $saveid);
+
+        // create stripe product for membership
+        if ($gateway == "stripecheckout") {
+            //get level object from db
+            $level = $wpdb->get_row("SELECT * FROM $wpdb->pmpro_membership_levels WHERE name = '" . $ml_name . "' LIMIT 1");
+            if (!class_exists("Stripe\Stripe")) {
+                require_once(PMPRO_DIR . "/includes/lib/Stripe/init.php");
+            }
+            $stripe = new \Stripe\StripeClient(pmpro_getOption("stripecheckout_secretkey"));
+
+            // create product 
+            $product = $stripe->products->create([
+                'name' => $ml_name,
+            ]);
+            
+            // create price for product
+            $price = $stripe->prices->create([
+                'unit_amount' => $ml_billing_amount * 100,
+                'currency' => 'usd',
+                'product' => $product->id,
+            ]);
+
+            $stripe->products->update(
+                $product->id,
+                ['metadata' => ['membership_id' => $level->id, 'membership_price' => $price->id]]
+            );
+        }
 	}
 	elseif($action == "delete_membership_level")
 	{

@@ -1026,13 +1026,13 @@ function pmpro_changeMembershipLevel( $level, $user_id = null, $old_level_status
 
     //TODO: VERYFY pmpro_hasMembershipLevel
 
-	// // if it's a custom level, they're changing
-	// if ( ! is_array( $level ) ) {
-	// 	// are they even changing?
-	// 	if ( pmpro_hasMembershipLevel( $level, $user_id ) ) {
-	// 		return;
-	// 	}
-	// }
+    // // if it's a custom level, they're changing
+    // if ( ! is_array( $level ) ) {
+    // 	// are they even changing?
+    // 	if ( pmpro_hasMembershipLevel( $level, $user_id ) ) {
+    // 		return;
+    // 	}
+    // }
 
 	// get all active membershipships for this user
 	$old_levels = pmpro_getMembershipLevelsForUser( $user_id );

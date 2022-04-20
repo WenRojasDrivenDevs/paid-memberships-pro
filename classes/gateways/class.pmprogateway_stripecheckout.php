@@ -301,8 +301,8 @@ class PMProGateway_stripecheckout extends PMProGateway
 
         $dir = home_url();
         $res = $stripe->checkout->sessions->create([
-            'success_url' => $dir . '/membership-confirmation?id={CHECKOUT_SESSION_ID}&' . $level_select->id,
-            'cancel_url' => $dir . '/membership-cancel',
+            'success_url' => get_permalink(get_option( 'pmpro_confirmation_page_id' )) . '/?id={CHECKOUT_SESSION_ID}&level=' . $level_select->id,
+            'cancel_url' => get_permalink(get_option( 'pmpro_cancel_page_id' )),
             'line_items' => [
                 [
                     'price' => $stripe_plan['metadata']->membership_price,
@@ -410,43 +410,27 @@ class PMProGateway_stripecheckout extends PMProGateway
         if (!current_user_can('manage_options')) {
             return;
         }
-
-        if (empty($_REQUEST['pmpro_stripe_access_token'])) {
+        if (empty($_REQUEST['pmpro_stripecheckout_secretkey']) || empty($_REQUEST['pmpro_stripecheckout_publishablekey'])) {
+            if (pmpro_getOption("stripecheckout_secretkey") === null || pmpro_getOption("stripecheckout_publishablekey") === null) {
+                global $pmpro_stripe_error;
+                $pmpro_stripe_error = sprintf(
+                    /* translators: %s Error Message */
+                    __('<strong>Error:</strong> PMPro could not connect to the Stripe API. Publishable key and secret key need to be uploaded ', 'paid-memberships-pro'),
+                );
+            }
             return;
+            delete_option('pmpro_stripecheckout_secretkey');
+            delete_option('pmpro_stripecheckout_publishablekey');
         }
+
         // Change current gateway to Stripe
         pmpro_setOption('gateway', 'stripecheckout');
-        pmpro_setOption('gateway_environment', $_REQUEST['pmpro_stripecheckout_connected_environment']);
 
-        $error = '';
-        // Update keys.
-        if ($_REQUEST['pmpro_stripecheckout_connected_environment'] === 'live') {
-            // Update live keys.
-            pmpro_setOption('live_stripe_connect_user_id', $_REQUEST['pmpro_stripe_user_id']);
-            pmpro_setOption('live_stripe_connect_secretkey', $_REQUEST['pmpro_stripe_access_token']);
-            pmpro_setOption('live_stripe_connect_publishablekey', $_REQUEST['pmpro_stripe_publishable_key']);
-        } else {
-            // Update sandbox keys.
-            pmpro_setOption('sandbox_stripe_connect_user_id', $_REQUEST['pmpro_stripe_user_id']);
-            pmpro_setOption('sandbox_stripe_connect_secretkey', $_REQUEST['pmpro_stripe_access_token']);
-            pmpro_setOption('sandbox_stripe_connect_publishablekey', $_REQUEST['pmpro_stripe_publishable_key']);
-        }
+        pmpro_setOption('stripecheckout_secretkey', $_REQUEST['pmpro_stripecheckout_secretkey']);
 
+        pmpro_setOption('stripecheckout_publishablekey', $_REQUEST['pmpro_stripecheckout_publishablekey']);
 
-        // Delete option for user API key.
-        delete_option('pmpro_stripe_secretkey');
-        delete_option('pmpro_stripe_publishablekey');
         wp_redirect(admin_url('admin.php?page=pmpro-paymentsettings'));
         exit;
-
-
-        if (!empty($error)) {
-            global $pmpro_stripe_error;
-            $pmpro_stripe_error = sprintf(
-                /* translators: %s Error Message */
-                __('<strong>Error:</strong> PMPro could not connect to the Stripe API. Reason: %s', 'paid-memberships-pro'),
-                esc_html($error)
-            );
-        }
     }
 }

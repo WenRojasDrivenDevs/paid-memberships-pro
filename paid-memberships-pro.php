@@ -110,6 +110,7 @@ require_once(PMPRO_DIR . '/classes/gateways/class.pmprogateway_paypal.php');
 require_once(PMPRO_DIR . '/classes/gateways/class.pmprogateway_paypalexpress.php');
 require_once(PMPRO_DIR . '/classes/gateways/class.pmprogateway_paypalstandard.php');
 require_once(PMPRO_DIR . '/classes/gateways/class.pmprogateway_stripecheckout.php');
+require_once(PMPRO_DIR . "/includes/lib/Stripe/init.php");
 
 pmpro_check_for_deprecated_gateways();
 
